@@ -3,7 +3,7 @@ from neo4j import GraphDatabase, basic_auth
 import json
 from textblob import TextBlob
 
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth("neo4j", "1234567890"))
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth("neo4j", ""))
 
 def get_recommendations(user_id):
     with driver.session() as session:
