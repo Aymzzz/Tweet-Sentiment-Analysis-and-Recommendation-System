@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recommendations</title>
+  </head>
+  <body>
+    <h1>Recommendations</h1>
+    <div id="recommendations"></div>
+
+    <script>
+      function getRecommendations() {
+        fetch("/recommendations")
+          .then((response) => response.json())
+          .then((data) => {
+            console.log(data);
+            displayRecommendations(data.recommendations);
+          })
+          .catch((error) => console.error("Error:", error));
+      }
+
+      function displayRecommendations(recommendations) {
+        var recommendationsDiv = document.getElementById("recommendations");
+        recommendations.forEach(function (rec) {
+          var p = document.createElement("p");
+          p.textContent = rec;
+          recommendationsDiv.appendChild(p);
+        });
+      }
+
+      // Call getRecommendations when the page loads
+      getRecommendations();
+    </script>
+  </body>
+</html>
