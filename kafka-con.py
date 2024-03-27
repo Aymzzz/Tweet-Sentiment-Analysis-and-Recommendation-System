@@ -1,62 +1,59 @@
 from kafka import KafkaConsumer
 from neo4j import GraphDatabase, basic_auth
-from textblob import TextBlob
 import json
+from textblob import TextBlob
 
 uri = "bolt://localhost:50585"
 driver = GraphDatabase.driver(uri, auth=basic_auth("neo4j", "1234567890"))
 
 bootstrap_servers = ['localhost:9092']
-consumer = KafkaConsumer('twitter-text', 'twitter-hashtags', 'twitter-usernames', 'twitter-sentiment',
-                         bootstrap_servers=bootstrap_servers, auto_offset_reset='earliest', enable_auto_commit=True)
+consumer = KafkaConsumer('twitter-text', bootstrap_servers=bootstrap_servers)
 
-for message in consumer:
-    topic = message.topic
-    value = message.value.decode('utf-8')
-    value = json.loads(value)
+def perform_sentiment_analysis(text):
+    blob = TextBlob(text)
+    sentiment_score = blob.sentiment.polarity
+    return sentiment_score
+try: 
+    for message in consumer:
+        value = message.value.decode('utf-8')
+        tweet = json.loads(value)
+        text = tweet['text']
+        hashtags = tweet['hashtags']
+        usernames = tweet['usernames']
 
-    if topic == 'twitter-text':
-        text = value['text']
-        hashtags = value['hashtags']
-        usernames = value['usernames']
-        sentiment = value['sentiment']
+        # Perform sentiment analysis on the tweet content
+        sentiment_score = perform_sentiment_analysis(text)
 
         with driver.session() as session:
-            tx = session.begin_transaction()
-            tweet = tx.run("MERGE (t:Tweet {id: $id}) "
-                           "ON CREATE SET t.text = $text, t.sentiment = $sentiment "
-                           "WITH t RETURN t", id=message.offset, text=text, sentiment=sentiment).single().value()
+            # Insert tweet into Neo4j
+            session.run(
+                "MERGE (t:Tweet {text: $text}) SET t.sentiment = $sentiment",
+                text=text, sentiment=sentiment_score
+            )
 
-            for hashtag in hashtags:
-                tx.run("MERGE (h:Hashtag {name: $name}) WITH h, $tweet AS t MERGE (t)-[:TAGGED]->(h)",
-                       name=hashtag, tweet=tweet)
+            if hashtags is not None:
+                for hashtag in hashtags:
+                    # Create or update hashtag nodes in Neo4j
+                    session.run("MERGE (h:Hashtag {name: $name})", name=hashtag)
+                    # Create TAGGED relationships between tweet and hashtag
+                    session.run(
+                        "MATCH (t:Tweet {text: $text}), (h:Hashtag {name: $name}) MERGE (t)-[:TAGGED {name: 'TAGGED'}]->(h)",
+                        text=text, name=hashtag
+                    )
 
-            for username in usernames:
-                tx.run("MERGE (u:User {name: $name}) WITH u, $tweet AS t MERGE (t)-[:MENTIONED]->(u)",
-                       name=username, tweet=tweet)
+            if usernames is not None:
+                for username in usernames:
+                    # Create or update user nodes in Neo4j
+                    session.run("MERGE (u:User {name: $name})", name=username)
+                    # Create MENTIONED relationships between tweet and user
+                    session.run(
+                        "MATCH (t:Tweet {text: $text}), (u:User {name: $name}) MERGE (t)-[:MENTIONED {name: 'MENTIONED'}]->(u)",
+                        text=text, name=username
+                    )
 
-            tx.commit()
+        print(f"Processed tweet: {text}")
+        
+except Exception as e:
+    print(f"Error occurred: {str(e)}")
 
-    elif topic == 'twitter-hashtags':
-        with driver.session() as session:
-            tx = session.begin_transaction()
-            hashtag = value
-            tx.run("MERGE (h:Hashtag {name: $name})", name=hashtag)
-            tx.commit()
-
-    elif topic == 'twitter-usernames':
-        with driver.session() as session:
-            tx = session.begin_transaction()
-            username = value
-            tx.run("MERGE (u:User {name: $name})", name=username)
-            tx.commit()
-
-    elif topic == 'twitter-sentiment':
-        sentiment = value['sentiment']
-        with driver.session() as session:
-            tx = session.begin_transaction()
-            tx.run("MATCH (t:Tweet {id: $id}) SET t.sentiment = $sentiment", id=message.offset, sentiment=sentiment)
-            tx.commit()
-
-consumer.close()
 driver.close()

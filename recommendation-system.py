@@ -1,123 +1,191 @@
+import threading
+from kafka import KafkaConsumer, KafkaProducer
 from neo4j import GraphDatabase, basic_auth
-from py2neo import Graph, NodeMatcher
+import json
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from textblob import TextBlob
 
-# Connect to Neo4j graph database
-graph = Graph("bolt://localhost:50585", auth=("neo4j", "1234567890"))
+# Graph Database Configuration
+uri = "bolt://localhost:50585"
+driver = GraphDatabase.driver(uri, auth=basic_auth("neo4j", "1234567890"))
 
-# Get node matcher for efficient node querying
-matcher = NodeMatcher(graph)
+# Kafka Configuration
+bootstrap_servers = ['localhost:9092']
+consumer = KafkaConsumer('twitter-text', bootstrap_servers=bootstrap_servers)
+producer = KafkaProducer(bootstrap_servers=bootstrap_servers)
 
-# Function to extract hashtags and usernames from text
-def extract_entities(text):
-    entities = {'hashtags': [], 'usernames': []}
-    for word in text.split():
-        if word.startswith('#'):
-            entities['hashtags'].append(word[1:])
-        elif word.startswith('@'):
-            entities['usernames'].append(word[1:])
-    return entities
+# Content-Based Filtering Configuration
+vectorizer = TfidfVectorizer()
 
-# Function to get sentiment polarity from text
-def get_sentiment(text):
-    blob = TextBlob(text)
-    return blob.sentiment.polarity
+# Collaborative Filtering Configuration
+SIMILAR_USERS_LIMIT = 5
 
-# Function to get similar users based on hashtags and sentiment
-def get_similar_users(user_id, hashtags):
-    query = '''
-        MATCH (u1:User)-[:POSTED]->(:Tweet)-[:TAGGED]->(h:Hashtag)
-        WHERE ID(u1) = $user_id AND h.name IN $hashtags
-        WITH DISTINCT u1
-        MATCH (u1)-[:POSTED]->(t:Tweet)<-[:POSTED]-(u2:User)
-        WITH DISTINCT u1, u2, COUNT(DISTINCT t) AS common_tweets
-        WHERE SIZE([(u1)-[:POSTED]->(t)<-[:POSTED]-(u) WHERE ID(u) = ID(u2) | NULL]) = 0
-        WITH DISTINCT u2, common_tweets
-        ORDER BY common_tweets DESC
-        LIMIT 10
-        RETURN COLLECT(ID(u2)) AS user_ids
-    '''
-    result = graph.run(query, user_id=user_id, hashtags=hashtags).data()
-    if result:
-        return result[0]['user_ids']
-    else:
-        return []
+def insert_tweet_to_neo4j(session, text, hashtags, usernames, sentiment):
+    # Insert tweet into Neo4j
+    session.run(
+        "CREATE (t:Tweet {text: $text, hashtags: $hashtags, usernames: $usernames, sentiment: $sentiment})",
+        text=text, hashtags=hashtags, usernames=usernames, sentiment=sentiment
+    )
 
-# Function to get similar tweets based on sentiment and content
-def get_similar_tweets(user_id):
-    query = '''
-        MATCH (u:User)-[:POSTED]->(t1:Tweet)
-        WHERE ID(u) = $user_id
-        WITH t1
-        MATCH (t1)-[:TAGGED]->(h:Hashtag)<-[:TAGGED]-(t2:Tweet)
-        WHERE ID(t1) <> ID(t2)
-        WITH t2, COUNT(DISTINCT h) AS common_hashtags
-        ORDER BY common_hashtags DESC
-        LIMIT 10
-        RETURN COLLECT(ID(t2)) AS tweet_ids
-    '''
-    result = graph.run(query, user_id=user_id).data()
-    if result:
-        return result[0]['tweet_ids']
-    else:
-        return []
+    if hashtags is not None:
+        for hashtag in hashtags:
+            # Create or update hashtag nodes in Neo4j
+            session.run("MERGE (h:Hashtag {name: $name})", name=hashtag)
+            # Create TAGGED relationships between tweet and hashtag
+            session.run(
+                "MATCH (t:Tweet {text: $text}), (h:Hashtag {name: $name}) CREATE (t)-[:TAGGED]->(h)",
+                text=text, name=hashtag
+            )
 
-# Function to get recommended tweets and users for a given user
-def get_recommendations(user_id):
-        
-    # Get user's posted tweets and sentiment
-    user = matcher.match('User', id=user_id).first()
-    if user is None:
-        return [], []
-    
-    # Get user's posted tweets and sentiment
-    posted_tweets = user.get_related_nodes('POSTED', 'Tweet')
-    sentiment = sum([get_sentiment(tweet['text']) for tweet in posted_tweets]) / len(posted_tweets)
+    if usernames is not None:
+        for username in usernames:
+            # Create or update user nodes in Neo4j
+            session.run("MERGE (u:User {name: $name})", name=username)
+            # Create MENTIONED relationships between tweet and user
+            session.run(
+                "MATCH (t:Tweet {text: $text}), (u:User {name: $name}) CREATE (t)-[:MENTIONED]->(u)",
+                text=text, name=username
+            )
 
-    # Get hashtags and usernames from user's tweets
+def update_tweet_sentiment(session, text, sentiment):
+    session.run("MATCH (t:Tweet {text: $text}) SET t.sentiment = $sentiment", text=text, sentiment=sentiment)
+
+def get_user_interests(session, username):
+    result = session.run(
+        "MATCH (u:User {name: $username})-[:MENTIONED]->(t:Tweet) RETURN t.hashtags",
+        username=username
+    )
     hashtags = []
-    usernames = []
-    for tweet in posted_tweets:
-        entities = extract_entities(tweet['text'])
-        hashtags.extend(entities['hashtags'])
-        usernames.extend(entities['usernames'])
+    for record in result:
+        tweet_hashtags = record["t.hashtags"]
+        if tweet_hashtags is not None:
+            hashtags.extend(tweet_hashtags)
+    return hashtags
 
-    # Get similar users based on hashtags and sentiment
-    similar_users = get_similar_users(user_id, hashtags)
-    tweets_to_recommend = []
+def get_similar_users(session, username):
+    result = session.run(
+        "MATCH (u1:User {name: $username})-[:MENTIONED]->(t:Tweet)<-[:MENTIONED]-(u2:User) "
+        "WHERE u1 <> u2 "
+        "RETURN DISTINCT u2.name AS similar_user "
+        "LIMIT $limit",
+        username=username,
+        limit=SIMILAR_USERS_LIMIT
+    )
+    similar_users = [record["similar_user"] for record in result]
+    return similar_users
 
-    # Aggregate similar users' tweets and exclude user's posted tweets
-    for similar_user_id in similar_users:
-        similar_user = matcher.match('User', id=similar_user_id).first()
-        similar_user_tweets = similar_user.get_related_nodes('POSTED', 'Tweet')
-        for tweet in similar_user_tweets:
-            if tweet not in posted_tweets:
-                tweets_to_recommend.append(tweet)
+def get_recommendations(username):
+    with driver.session() as session:
+        user_interests = get_user_interests(session, username)
+        similar_users = get_similar_users(session, username)
 
-    # Get similar tweets based on sentiment and content
-    similar_tweets = get_similar_tweets(user_id)
+        # Content-Based Filtering
+        vectorizer.fit(user_interests)
+        user_interests_vector = vectorizer.transform([user_interests])
+        tweet_hashtags_vectors = session.run(
+            "MATCH (h:Hashtag)<-[:TAGGED]-(t:Tweet) RETURN h.name AS hashtag, t.hashtags AS hashtags"
+        )
+        content_based_scores = {}
+        for record in tweet_hashtags_vectors:
+            hashtag = record["hashtag"]
+            hashtags = record["hashtags"]
+            if hashtags is not None:
+                hashtags_vector = vectorizer.transform([hashtags])
+                similarity_scores = cosine_similarity(user_interests_vector, hashtags_vector)
+                content_based_scores[hashtag] = similarity_scores[0][0]
 
-    # Aggregate similar tweets and exclude user's posted tweets
-    for tweet_id in similar_tweets:
-        tweet = matcher.match('Tweet', id=tweet_id).first()
-        if tweet not in posted_tweets:
-            tweets_to_recommend.append(tweet)
+        # Collaborative Filtering
+        collaborative_scores = {}
+        for similar_user in similar_users:
+            user_tweets = session.run(
+                "MATCH (u:User {name: $username})-[:MENTIONED]->(t:Tweet) RETURN t.hashtags AS hashtags",
+                username=similar_user
+            )
+            for record in user_tweets:
+                hashtags = record["hashtags"]
+                if hashtags is not None:
+                    for hashtag in hashtags:
+                        if hashtag not in collaborative_scores:
+                            collaborative_scores[hashtag] = 0
+                        collaborative_scores[hashtag] += 1
 
-    # Get recommended hashtags and users from recommended tweets
-    recommended_hashtags = []
-    recommended_users = []
-    for tweet in tweets_to_recommend:
-        entities = extract_entities(tweet['text'])
-        recommended_hashtags.extend(entities['hashtags'])
-        recommended_users.extend(entities['usernames'])
+        # Combine Content-Based and Collaborative Filtering Scores
+        combined_scores = {}
+        for hashtag in set(list(content_based_scores.keys()) + list(collaborative_scores.keys())):
+            content_based_score = content_based_scores.get(hashtag, 0)
+            collaborative_score = collaborative_scores.get(hashtag, 0)
+            combined_score = content_based_score + collaborative_score
+            combined_scores[hashtag] = combined_score
 
-    # Remove duplicates and return top 10 recommended hashtags and users
-    recommended_hashtags = list(set(recommended_hashtags))
-    recommended_users = list(set(recommended_users))
-    return recommended_hashtags[:10], recommended_users[:10]
+        # Sort the recommendations by combined score in descending order
+        recommendations = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
 
-# Example usage
-user = matcher.match('User', username='hillary006').first()
-hashtags, users = get_recommendations(user)
-print(f"Recommended hashtags for user {user['username']}: {hashtags}")
-print(f"Recommended users for user {user['username']}: {users}")
+        return recommendations
+
+def process_tweet(message):
+    value = message.value.decode('utf-8')
+    tweet = json.loads(value)
+    text = tweet['text']
+    hashtags = tweet['hashtags']
+    usernames = tweet['usernames']
+    sentiment = tweet['sentiment']
+
+    with driver.session() as session:
+        insert_tweet_to_neo4j(session, text, hashtags, usernames, sentiment)
+        update_tweet_sentiment(session, text, sentiment)
+
+    print(f"Processed tweet: {text}")
+
+def run_consumer():
+    for message in consumer:
+        process_tweet(message)
+
+def run_producer():
+    with driver.session() as session:
+        result = session.run("MATCH (t:Tweet) RETURN t.text, t.hashtags, t.usernames")
+        count = 0
+        for record in result:
+            text = record["t.text"]
+            hashtags = record["t.hashtags"]
+            usernames = record["t.usernames"]
+            blob = TextBlob(text)
+            sentiment = blob.sentiment.polarity
+            message = {
+                "text": text,
+                "hashtags": hashtags,
+                "usernames": usernames,
+                "sentiment": sentiment
+            }
+            value_bytes = json.dumps(message, ensure_ascii=False).encode('utf-8')
+            producer.send('twitter-text', value=value_bytes)
+            if hashtags is not None:
+                for hashtag in hashtags:
+                    producer.send('twitter-hashtags', value=hashtag.encode('utf-8'))
+            if usernames is not None:
+                for username in usernames:
+                    producer.send('twitter-usernames', value=username.encode('utf-8'))
+
+            # Publish sentiment data to the 'twitter-sentiment' topic
+            producer.send('twitter-sentiment', value=json.dumps({"sentiment": sentiment}).encode('utf-8'))
+
+            update_tweet_sentiment(session, text, sentiment)
+
+            count += 1
+            print(f"Sent message {count}: {message}")
+
+    producer.flush()
+    producer.close()
+
+if __name__ == '__main__':
+    # Start consumer and producer in separate threads or processes
+    consumer_thread = threading.Thread(target=run_consumer)
+    producer_thread = threading.Thread(target=run_producer)
+
+    consumer_thread.start()
+    producer_thread.start()
+
+    consumer_thread.join()
+    producer_thread.join()
+
+    driver.close()
