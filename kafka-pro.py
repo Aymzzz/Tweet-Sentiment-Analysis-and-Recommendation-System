@@ -34,6 +34,10 @@ with driver.session() as session:
         if usernames is not None:
             for username in usernames:
                 producer.send('twitter-usernames', value=username.encode('utf-8'))
+
+        # Publish sentiment data to the 'twitter-sentiment' topic
+        producer.send('twitter-sentiment', value=json.dumps({"sentiment": sentiment}).encode('utf-8'))
+
         result = session.run("MATCH (t:Tweet {text: $text}) SET t.sentiment = $sentiment", text=text, sentiment=sentiment)
         count += 1
         print(f"Sent message {count}: {message}")
