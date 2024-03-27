@@ -3,7 +3,7 @@ from neo4j import GraphDatabase, basic_auth
 import json
 from textblob import TextBlob
 
-uri = "bolt://localhost:50585"
+uri = "bolt://localhost:64048"
 
 driver = GraphDatabase.driver(uri, auth=basic_auth("neo4j", "1234567890"))
 
