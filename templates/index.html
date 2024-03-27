@@ -3,42 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Post Tweets</title>
+    <title>Submit Tweet</title>
+    <style>
+      /* Add your CSS styles here */
+    </style>
   </head>
   <body>
-    <h1>Post Tweets</h1>
-    <form id="tweetForm">
+    <h1>Submit Tweet</h1>
+    <form action="/submit_tweet" method="post">
       <label for="tweet">Enter your tweet:</label><br />
       <textarea id="tweet" name="tweet" rows="4" cols="50"></textarea><br />
-      <button type="submit">Post Tweet</button>
+      <input type="submit" value="Submit" />
     </form>
-
-    <div id="recommendations"></div>
-
-    <script>
-      document
-        .getElementById("tweetForm")
-        .addEventListener("submit", function (event) {
-          event.preventDefault();
-          var tweet = document.getElementById("tweet").value;
-          postTweet(tweet);
-        });
-
-      function postTweet(tweet) {
-        fetch("/post_tweet", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ tweet: tweet }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            console.log(data);
-            // Optionally, display a success message to the user
-          })
-          .catch((error) => console.error("Error:", error));
-      }
-    </script>
   </body>
 </html>
