@@ -3,7 +3,7 @@ import pandas as pd
 from neo4j import GraphDatabase
 from tqdm import tqdm
 
-uri = "bolt://localhost:50585"
+uri = "bolt://localhost:64048"
 driver = GraphDatabase.driver(uri, auth=("neo4j", "1234567890"))
 
 def insert_tweet(tx, row):
