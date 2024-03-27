@@ -2,6 +2,8 @@ from kafka import KafkaConsumer
 from neo4j import GraphDatabase, basic_auth
 import json
 from textblob import TextBlob
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 uri = "bolt://localhost:50585"
 driver = GraphDatabase.driver(uri, auth=basic_auth("neo4j", "1234567890"))
