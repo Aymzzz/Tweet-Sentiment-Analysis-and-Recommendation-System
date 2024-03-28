@@ -24,3 +24,8 @@ def content_based_filtering_recommendation(hashtag):
     with driver.session() as session:
         result = session.run("MATCH (h:Hashtag {name: $hashtag})<-[:TAGGED]-(t:Tweet) WHERE EXISTS(t.sentiment) RETURN t.text, t.sentiment ORDER BY t.sentiment DESC LIMIT 10", hashtag=hashtag)
     return [(tweet, sentiment) for tweet, sentiment in result.records()]
+
+# Testing it to see if it works
+
+hashtag_recommendations = collaborative_filtering_recommendation("catvix")
+print(hashtag_recommendations)
