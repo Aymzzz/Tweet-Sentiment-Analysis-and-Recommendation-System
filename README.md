@@ -1,6 +1,9 @@
 # Tweet-Sentiment-Analysis-and-Recommendation-System
 
-This README file provides an overview of the code and instructions for running the different components of the system.
+This project aims to develop a scalable graph-based recommendation system for Twitter-like users. The system provides recommendations in the form of hashtags to browse and users to follow. A front-end web application allows users to post tweets, which are then processed by an underlying graph database. Simultaneously, the tweets are streamed for near real-time sentiment analysis using natural language processing (NLP). The sentiment analysis results are used to refine the recommendations provided to the users.
+
+## Project Overview
+The main focus of this project is to build a scalable pipeline rather than developing a sophisticated web application. The web application serves as a user interface for posting tweets, while the recommendations and sentiment analysis form the core components of the system. The recommendations are generated based on the hashtags and users present in the user tweets, and the sentiment analysis results are used to enhance the recommendations.
 
 ## System Components
 
@@ -127,20 +130,6 @@ To run the recommendation system, follow these steps:
 9. You can continue to try different recommendations by following the prompts.
 
 Note: Make sure the Neo4j database is running and has the necessary data inserted before running the recommendation system.
-
-## Additional Notes
-
-- You can modify the `config.py` file to change the Kafka and Neo4j configuration parameters if needed.
-
-- The `data` directory contains sample tweet data in CSV format that can be used to populate the Neo4j database. You can modify this data or provide your own data in the same format.
-
-- The `models` directory contains the pre-trained sentiment analysis model used by TextBlob. You can replace this model file with your own if desired.
-
-- The recommendation system uses collaborative filtering and content-based recommendation techniques as examples. You can modify and extend these techniques or implement other recommendation algorithms as per your requirements.
-
-- The system is provided as a starting point and may require further customization and optimization depending on your specific use case.
-
-- This system is a simplified demonstration and may not include all the features and considerations required for a production-level application. Please use it as a reference and adapt it to meet your specific needs.
 
 ## How to run flask 
 * virtualenv env
