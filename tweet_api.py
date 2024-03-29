@@ -70,13 +70,13 @@ def new_tweet():
         """, text=tweet_text, sentiment=sentiment)
 
     # Get the recommended hashtags and users based on the new tweet data
-    hashtags_tweets_dict = get_hashtags_tweets_dict()
-    recommended_hashtags = collaborative_filtering_recommendation(username)
-    recommended_users = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
+    hashtags_tweets_dict = get_hashtags_tweets_dict()    
+    similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
+    recommended_users = collaborative_filtering_recommendation(username)
 
     # Return the recommended hashtags, users, and sentiment as a response
     response = {
-        "recommended_hashtags": recommended_hashtags,
+        "similar_tweets": similar_tweets,
         "recommended_users": recommended_users,
         "sentiment": sentiment
     }
