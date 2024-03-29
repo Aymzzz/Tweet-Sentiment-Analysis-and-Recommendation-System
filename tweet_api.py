@@ -70,6 +70,7 @@ def new_tweet():
         """, text=tweet_text, sentiment=sentiment)
 
     # Get the recommended hashtags and users based on the new tweet data
+    hashtags_tweets_dict = get_hashtags_tweets_dict()
     recommended_hashtags = collaborative_filtering_recommendation(username)
     recommended_users = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
 
@@ -80,6 +81,5 @@ def new_tweet():
         "sentiment": sentiment
     }
     return jsonify(response)
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)
