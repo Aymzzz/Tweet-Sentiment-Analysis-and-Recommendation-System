@@ -17,12 +17,17 @@ def get_users_tweets_dict():
 
 def get_hashtags_tweets_dict():
     with driver.session() as session:
-        result = session.run("MATCH (h:Hashtag)<-[:TAGGED]-(t:Tweet) RETURN h.name, collect(DISTINCT t.text) as tweets ORDER BY h.name")
-        hashtags_tweets = {}
+        result = session.run("""
+            MATCH (t:Tweet)
+            WHERE size(t.hashtags) > 0
+            RETURN t.text, t.hashtags
+        """)
+        hashtags_tweets_dict = {}
         for record in result:
-            hashtag = record['h.name']
-            tweets = record['tweets']
-            hashtags_tweets[hashtag] = tweets
-        # Consume the result
-        result.consume()
-        return hashtags_tweets
+            tweet_text = record["t.text"]
+            hashtags = record["t.hashtags"]
+            for hashtag in hashtags:
+                if hashtag not in hashtags_tweets_dict:
+                    hashtags_tweets_dict[hashtag] = []
+                hashtags_tweets_dict[hashtag].append(tweet_text)
+    return hashtags_tweets_dict
