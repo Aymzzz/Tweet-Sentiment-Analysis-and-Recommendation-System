@@ -1,14 +1,18 @@
-from flask import Flask, request, jsonify
+from flask import Flask, redirect, render_template, request, jsonify, send_from_directory, session
+
 from kafka import KafkaProducer
 from neo4j import GraphDatabase, basic_auth
 import json
+from functools import wraps
 from textblob import TextBlob
+import pymongo
+
 from recommendation_system import collaborative_filtering_recommendation, content_based_filtering_recommendation
 from neo4j_utils import get_hashtags_tweets_dict
 
 app = Flask(__name__)
 
-uri = "bolt://localhost:64048"
+uri = "bolt://localhost:7687"
 
 driver = GraphDatabase.driver(uri, auth=basic_auth("neo4j", "1234567890"))
 
@@ -16,46 +20,73 @@ bootstrap_servers = ['localhost:9092']
 
 producer = KafkaProducer(bootstrap_servers=bootstrap_servers)
 
+# Database
+client = pymongo.MongoClient('localhost', 27017)
+db = client.user_login_system
+
+# Decorators
+def login_required(f):
+  @wraps(f)
+  def wrap(*args, **kwargs):
+    if 'logged_in' in session:
+      return f(*args, **kwargs)
+    else:
+      return redirect('/')
+  
+  return wrap
+
+# Routes
+from user import routes
+
+@app.route('/')
+def home():
+  return render_template('home.html')
+
+@app.route('/dashboard/')
+@login_required
+def index():
+    return render_template('index.html')
+
 @app.route('/new_tweet', methods=['POST'])
 def new_tweet():
     # Parse the new tweet data from the request
-    data = request.json
-    tweet_text = data.get('text')
-    usernames = data.get('usernames')
-    hashtags = data.get('hashtags')
-    mentions = data.get('mentions')
+    tweet_text = request.form.get('text')
+    username = request.form.get('username')
+    hashtags = request.form.get('hashtags')
+    mentions = request.form.get('mentions')
 
-    # Check if the 'text' and 'usernames' parameters are null or missing
+    # Check if the 'text' parameter is null or missing
     if tweet_text is None:
         return jsonify({'error': 'Text parameter is missing or null'}), 400
-    if usernames is None:
-        return jsonify({'error': 'Usernames parameter is missing or null'}), 400
+
+    # Convert hashtags and mentions to lists
+    if hashtags:
+        hashtags = hashtags.split(',')
+    if mentions:
+        mentions = mentions.split(',')
 
     # Insert the new tweet data into the graph database
     with driver.session() as session:
-        session.run("""\
+        session.run("""
             MERGE (t:Tweet {text: $text})
-            WITH t
-            UNWIND $usernames AS username
-            MERGE (u:User {name: username})
-            MERGE (u)-[:POSTED]->(t)
-            SET t.usernames = COALESCE(t.usernames, []) + username
+            SET t.usernames = COALESCE(t.usernames, []) + $username
             SET t.hashtags = COALESCE(t.hashtags, []) + $hashtags
             SET t.mentions = COALESCE(t.mentions, []) + $mentions
-        """, text=tweet_text, usernames=usernames, hashtags=hashtags, mentions=mentions)
+        """, text=tweet_text, username=username, hashtags=hashtags, mentions=mentions)
         result = session.run("MATCH (t:Tweet {text: $text}) RETURN t", text=tweet_text)
         tweet = result.single()[0]
         print(f"Updated tweet: {tweet}")
+
+    # Your remaining code...
+
 
     # Stream the new tweet data to the Kafka producer
     message = {
         "text": tweet_text,
         "hashtags": hashtags,
-        "usernames": usernames,
-        "mentions": mentions,
+        "usernames": [username],
         "sentiment": None
     }
-
     value_bytes = json.dumps(message, ensure_ascii=False).encode('utf-8')
     producer.send('twitter-text', value=value_bytes)
     if hashtags is not None:
@@ -76,25 +107,18 @@ def new_tweet():
             MATCH (t:Tweet {text: $text})
             SET t.sentiment = $sentiment
         """, text=tweet_text, sentiment=sentiment)
-    
-    print("========================================================================",usernames[0])    
 
     # Get the recommended hashtags and users based on the new tweet data
-    hashtags_tweets_dict = get_hashtags_tweets_dict()
-    if hashtags is not None and len(hashtags) > 0:
-        similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
-    else:
-        similar_tweets = []
-    
-    recommended_users = collaborative_filtering_recommendation(usernames[0])
+    hashtags_tweets_dict = get_hashtags_tweets_dict()    
+    similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
+    recommended_users = collaborative_filtering_recommendation(username)
 
     # Return the recommended hashtags, users, and sentiment as a response
     response = {
-        "similar_tweets": similar_tweets,
-        "recommended_users": recommended_users,
+        "similar_tweets": similar_tweets if similar_tweets else [],
+        "recommended_users": recommended_users if recommended_users else [],
         "sentiment": sentiment
     }
     return jsonify(response)
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)
