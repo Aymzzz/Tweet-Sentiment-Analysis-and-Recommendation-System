@@ -110,11 +110,11 @@ To run the recommendation system, follow these steps:
 
 1. Open a command prompt or terminal.
 
-2. Navigate to the directory where `Recommendation-system.py` is located.
+2. Navigate to the directory where `recommendation-system.py` is located.
 
 3. Run the following command to start the recommendation system:
    ```
-   python Recommendation-system.py
+   python recommendation-system.py
    ```
 
 4. The recommendation system will prompt you to choose the type of recommendation you want to try: collaborative filtering-based recommendation or content-based recommendation. Enter `1` or `2` accordingly.
@@ -134,4 +134,51 @@ Note: Make sure the Neo4j database is running and has the necessary data inserte
 ## How to run flask 
 * virtualenv env
 * env\Scripts\activate.bat
-* then you can install and run whaterver you need inside the virtual enviorment 
+* then you can install and run whaterver you need inside the virtual enviorment
+To incorporate the new code `tweet_api.py` into the existing README.md file, you can add the following section:
+
+## Flask Application and Tweet API
+
+The project includes a Flask application that provides a web interface for posting new tweets and retrieving recommendations and sentiment analysis results. The Flask application is defined in the `Tweet_api.py` file.
+
+### Flask Application Setup
+
+1. Install the required Python packages:
+   ```
+   pip install flask kafka-python neo4j textblob pymongo
+   ```
+
+2. Start the Flask application by running the following command:
+   ```
+   python tweet_api.py
+   ```
+
+   This will start the Flask server at `http://0.0.0.0:8000/`.
+
+### API Endpoints
+
+The Flask application provides the following API endpoints:
+
+- `GET /`: Renders the home page.
+- `GET /dashboard/`: Renders the dashboard page (requires login).
+- `POST /new_tweet`: Handles the posting of a new tweet. It performs the following operations:
+  - Inserts the new tweet data (text, hashtags, mentions) into the Neo4j graph database.
+  - Streams the new tweet data to the Kafka topics (`twitter-text`, `twitter-hashtags`, `twitter-usernames`).
+  - Performs sentiment analysis on the new tweet text using TextBlob.
+  - Streams the sentiment data to the Kafka topic (`twitter-sentiment`) and updates the sentiment value in the Neo4j database.
+  - Retrieves recommended tweets based on collaborative filtering and content-based filtering.
+  - Returns a JSON response containing the recommended tweets, recommended users, and sentiment value.
+
+### User Authentication
+
+The Flask application includes a simple user authentication system using Flask sessions and MongoDB. The user authentication routes are defined in the `user/routes.py` file.
+
+### Running the Application
+
+To run the Flask application, follow these steps:
+
+1. Start the required services (Neo4j, Kafka, MongoDB).
+2. Run the Flask application using the command `python tweet_api.py`.
+3. Access the application at `http://0.0.0.0:8000/`.
+
+Note: Make sure to update the Neo4j credentials (`uri` and `driver`) and MongoDB connection details (`client` and `db`) in the `Tweet_api.py` file if necessary these are just for demonstration purposes.
