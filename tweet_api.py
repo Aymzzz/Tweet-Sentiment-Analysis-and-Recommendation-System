@@ -21,22 +21,28 @@ def new_tweet():
     # Parse the new tweet data from the request
     data = request.json
     tweet_text = data.get('text')
-    username = data.get('username')
+    usernames = data.get('usernames')
     hashtags = data.get('hashtags')
     mentions = data.get('mentions')
 
-    # Check if the 'text' parameter is null or missing
+    # Check if the 'text' and 'usernames' parameters are null or missing
     if tweet_text is None:
         return jsonify({'error': 'Text parameter is missing or null'}), 400
+    if usernames is None:
+        return jsonify({'error': 'Usernames parameter is missing or null'}), 400
 
     # Insert the new tweet data into the graph database
     with driver.session() as session:
-        session.run("""
+        session.run("""\
             MERGE (t:Tweet {text: $text})
-            SET t.usernames = COALESCE(t.usernames, []) + $username
+            WITH t
+            UNWIND $usernames AS username
+            MERGE (u:User {name: username})
+            MERGE (u)-[:POSTED]->(t)
+            SET t.usernames = COALESCE(t.usernames, []) + username
             SET t.hashtags = COALESCE(t.hashtags, []) + $hashtags
             SET t.mentions = COALESCE(t.mentions, []) + $mentions
-        """, text=tweet_text, username=username, hashtags=hashtags, mentions=mentions)
+        """, text=tweet_text, usernames=usernames, hashtags=hashtags, mentions=mentions)
         result = session.run("MATCH (t:Tweet {text: $text}) RETURN t", text=tweet_text)
         tweet = result.single()[0]
         print(f"Updated tweet: {tweet}")
@@ -45,9 +51,11 @@ def new_tweet():
     message = {
         "text": tweet_text,
         "hashtags": hashtags,
-        "usernames": [username],
+        "usernames": usernames,
+        "mentions": mentions,
         "sentiment": None
     }
+
     value_bytes = json.dumps(message, ensure_ascii=False).encode('utf-8')
     producer.send('twitter-text', value=value_bytes)
     if hashtags is not None:
@@ -68,11 +76,17 @@ def new_tweet():
             MATCH (t:Tweet {text: $text})
             SET t.sentiment = $sentiment
         """, text=tweet_text, sentiment=sentiment)
+    
+    print("========================================================================",usernames[0])    
 
     # Get the recommended hashtags and users based on the new tweet data
-    hashtags_tweets_dict = get_hashtags_tweets_dict()    
-    similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
-    recommended_users = collaborative_filtering_recommendation(username)
+    hashtags_tweets_dict = get_hashtags_tweets_dict()
+    if hashtags is not None and len(hashtags) > 0:
+        similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
+    else:
+        similar_tweets = []
+    
+    recommended_users = collaborative_filtering_recommendation(usernames[0])
 
     # Return the recommended hashtags, users, and sentiment as a response
     response = {
@@ -81,5 +95,6 @@ def new_tweet():
         "sentiment": sentiment
     }
     return jsonify(response)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)
