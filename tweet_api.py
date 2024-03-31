@@ -1,12 +1,10 @@
 from flask import Flask, redirect, render_template, request, jsonify, send_from_directory, session
-
 from kafka import KafkaProducer
 from neo4j import GraphDatabase, basic_auth
 import json
 from functools import wraps
 from textblob import TextBlob
 import pymongo
-
 from recommendation_system import collaborative_filtering_recommendation, content_based_filtering_recommendation
 from neo4j_utils import get_hashtags_tweets_dict
 
@@ -49,23 +47,22 @@ def index():
 
 @app.route('/new_tweet', methods=['POST'])
 def new_tweet():
-    # Parse the new tweet data from the request
+    # Parsing new tweet data
     tweet_text = request.form.get('text')
     username = request.form.get('username')
     hashtags = request.form.get('hashtags')
     mentions = request.form.get('mentions')
 
-    # Check if the 'text' parameter is null or missing
     if tweet_text is None:
         return jsonify({'error': 'Text parameter is missing or null'}), 400
 
-    # Convert hashtags and mentions to lists
+    # hashtags and mentions to lists
     if hashtags:
         hashtags = hashtags.split(',')
     if mentions:
         mentions = mentions.split(',')
 
-    # Insert the new tweet data into the graph database
+    # This inserts the new tweet data into the graph database
     with driver.session() as session:
         session.run("""
             MERGE (t:Tweet {text: $text})
@@ -76,9 +73,6 @@ def new_tweet():
         result = session.run("MATCH (t:Tweet {text: $text}) RETURN t", text=tweet_text)
         tweet = result.single()[0]
         print(f"Updated tweet: {tweet}")
-
-    # Your remaining code...
-
 
     # Stream the new tweet data to the Kafka producer
     message = {
@@ -96,11 +90,11 @@ def new_tweet():
         for mention in mentions:
             producer.send('twitter-usernames', value=mention.encode('utf-8'))
 
-    # Perform sentiment analysis on the new tweet data
+    #Sentiment analysis on the new tweet data
     blob = TextBlob(tweet_text)
     sentiment = blob.sentiment.polarity
 
-    # Stream the sentiment data to the Kafka producer and update the sentiment data in the graph database
+    #stream the sentiment data to the Kafka producer and update the sentiment data in the graph database
     producer.send('twitter-sentiment', value=json.dumps({"sentiment": sentiment}).encode('utf-8'))
     with driver.session() as session:
         session.run("""
@@ -108,17 +102,21 @@ def new_tweet():
             SET t.sentiment = $sentiment
         """, text=tweet_text, sentiment=sentiment)
 
-    # Get the recommended hashtags and users based on the new tweet data
+    #This will help us get the recommendations from the recommendation-system
     hashtags_tweets_dict = get_hashtags_tweets_dict()    
     similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
     recommended_users = collaborative_filtering_recommendation(username)
 
-    # Return the recommended hashtags, users, and sentiment as a response
+    # these are teh returned outputs
     response = {
         "similar_tweets": similar_tweets if similar_tweets else [],
         "recommended_users": recommended_users if recommended_users else [],
         "sentiment": sentiment
     }
     return jsonify(response)
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    try:
+        app.run(host='0.0.0.0', port=8000, debug=True)
+    except(): 
+        print("Invalid port number")
