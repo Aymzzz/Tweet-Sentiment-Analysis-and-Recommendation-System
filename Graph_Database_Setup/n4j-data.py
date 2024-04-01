@@ -6,6 +6,9 @@ from tqdm import tqdm
 uri = "bolt://localhost:64048"
 driver = GraphDatabase.driver(uri, auth=("neo4j", "1234567890"))
 
+# This code is what is we used to input the csv data from the tweets_with_tags.py file. 
+# With respect to the tweet structure as in mentions, usersnames, links and possible hashtags.
+
 def insert_tweet(tx, row):
     """
     Inserts a tweet and its associated nodes and relationships into the graph.
