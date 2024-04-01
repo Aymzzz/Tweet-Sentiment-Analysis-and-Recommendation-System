@@ -1,4 +1,3 @@
-<<<<<<< HEAD:Graph_Database_Setup/n4j-data.py
 import re
 import pandas as pd
 from neo4j import GraphDatabase
