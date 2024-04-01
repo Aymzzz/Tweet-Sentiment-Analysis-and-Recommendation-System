@@ -24,10 +24,8 @@
     <form id="tweetForm">
       <label for="tweetText">Enter Tweet:</label><br />
       <textarea id="tweetText" name="text" rows="4" cols="50"></textarea><br />
-      <!-- Updated name attribute to "text" -->
       <label for="username">Username:</label><br />
       <input type="text" id="username" name="username" /><br />
-      <!-- Removed input fields for hashtags and mentions -->
       <br />
       <button type="button" class="twitter" onclick="parseAndSubmitTweet()">
         <span></span>
@@ -39,7 +37,6 @@
     </form>
 
     <div id="results">
-      <!-- Results will be displayed here -->
     </div>
 
     <script>
@@ -53,32 +50,34 @@
         formData.append("username", document.getElementById("username").value);
         formData.append("hashtags", hashtags ? hashtags.join(",") : "");
         formData.append("mentions", mentions ? mentions.join(",") : "");
+        formData.append("source", "dashboard");
 
         submitTweet(formData);
       }
-      function submitTweet() {
-        var formData = new FormData(document.getElementById("tweetForm"));
+
+      function submitTweet(formData) {
         fetch("/dashboard/new_tweet", {
           method: "POST",
           body: formData,
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            displayResults(data);
-          })
-          .catch((error) => console.error("Error:", error));
+      })
+      .then((response) => response.json())
+      .then((data) => {
+          displayResults(data);
+      })
+      .catch((error) => console.error("Error:", error));
       }
 
       function displayResults(data) {
-        console.log("Received data:", data); // Add this line for debugging
+        console.log("Received data:", data);
         var resultsDiv = document.getElementById("results");
         resultsDiv.innerHTML = "<h2>Results</h2>";
         resultsDiv.innerHTML += "<p>Sentiment: " + data.sentiment + "</p>";
         resultsDiv.innerHTML += "<h3>Similar Tweets:</h3>";
+        console.log(data.similar_tweets)
         if (data.similar_tweets && data.similar_tweets.length > 0) {
           data.similar_tweets.forEach(function (tweet) {
             resultsDiv.innerHTML += "<p>" + tweet + "</p>";
-          });
+            console.log(tweet)          });
         } else {
           resultsDiv.innerHTML += "<p>No similar tweets found</p>";
         }

@@ -9,13 +9,13 @@ import pymongo
 import re
 
 from recommendation_system import collaborative_filtering_recommendation, content_based_filtering_recommendation
-from neo4j_utils import get_hashtags_tweets_dict
+from neo4j_utils import get_hashtags_tweets_dict, get_users_tweets_dict
 
 app = Flask(__name__)
 app.secret_key = b'\xcc^\x91\xea\x17-\xd0W\x03\xa7\xf8J0\xac8\xc5'
 
 
-uri = "bolt://localhost:7687"
+uri = "bolt://localhost:64048"
 
 driver = GraphDatabase.driver(uri, auth=basic_auth("neo4j", "1234567890"))
 
@@ -56,14 +56,15 @@ def new_tweet():
     tweet_text = request.form.get('text')
     username = request.form.get('username')
 
-    # Check if the 'text' parameter is null or missing
+    # simepl checker
     if tweet_text is None:
         return jsonify({'error': 'Text parameter is missing or null'}), 400
 
     # Extract hashtags and mentions from the tweet text
     hashtags = re.findall(r'#(\w+)', tweet_text)
     mentions = re.findall(r'@(\w+)', tweet_text)
-
+    print("============ this hash",hashtags)
+    print("============ this hash",mentions)
     # Insert the new tweet data into the graph database
     with driver.session() as session:
         session.run("""
@@ -75,8 +76,6 @@ def new_tweet():
         result = session.run("MATCH (t:Tweet {text: $text}) RETURN t", text=tweet_text)
         tweet = result.single()[0]
         print(f"Updated tweet: {tweet}")
-
-    # Your remaining code...
 
     # Stream the new tweet data to the Kafka producer
     message = {
@@ -108,16 +107,27 @@ def new_tweet():
 
     # Get the recommended hashtags and users based on the new tweet data
     hashtags_tweets_dict = get_hashtags_tweets_dict()
-    similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
+
+    hashtag = hashtags[0]
+    print("Hashtag value", hashtag)
+    similar_tweets = content_based_filtering_recommendation("#"+hashtag, hashtags_tweets_dict)
+    print("similar_tweets",similar_tweets)
     recommended_users = collaborative_filtering_recommendation(username)
+    print("recommended_users",recommended_users)
+
+    # Get top hashtags and users from the recommended list
+    top_hashtags = [tweet[0] for tweet in similar_tweets][:5]  # Extract tweet text from each tuple
+    top_users = [user for user in recommended_users if user != username][:5]
 
     # Return the recommended hashtags, users, and sentiment as a response
     response = {
-        "similar_tweets": similar_tweets if similar_tweets else [],
-        "recommended_users": recommended_users if recommended_users else [],
+        "hashtag_recommendations": top_hashtags if top_hashtags else [],
+        "user_recommendations": top_users if top_users else [],
+        "similar_tweets": similar_tweets,  # Add similar_tweets to the response
         "sentiment": sentiment
     }
     return jsonify(response)
+
 
 # if __name__ == '__main__':
 #     app.run(debug=True, port=5001)
