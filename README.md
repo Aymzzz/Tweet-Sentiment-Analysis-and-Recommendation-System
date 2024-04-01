@@ -147,13 +147,17 @@ The project includes a Flask application that provides a web interface for posti
    ```
    pip install flask kafka-python neo4j textblob pymongo
    ```
-
-2. Start the Flask application by running the following command:
+2.Set the Environment Variables:
    ```
-   python tweet_api.py
+   set FLASK_APP=tweet_api.py
+   set FLASK_ENV=development
+   ```
+3. Start the Flask application by running the following command:
+   ```
+   flask run --port=5001
    ```
 
-   This will start the Flask server at `http://0.0.0.0:8000/`.
+   This will start the Flask server at `http://121.0.0.1:5001/`.
 
 ### API Endpoints
 
@@ -179,6 +183,6 @@ To run the Flask application, follow these steps:
 
 1. Start the required services (Neo4j, Kafka, MongoDB).
 2. Run the Flask application using the command `python tweet_api.py`.
-3. Access the application at `http://0.0.0.0:8000/`.
+3. Access the application at `http://121.0.0.1:5001/`.
 
 Note: Make sure to update the Neo4j credentials (`uri` and `driver`) and MongoDB connection details (`client` and `db`) in the `Tweet_api.py` file if necessary these are just for demonstration purposes.
