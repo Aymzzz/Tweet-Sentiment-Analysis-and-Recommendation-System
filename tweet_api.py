@@ -6,6 +6,7 @@ import json
 from functools import wraps
 from textblob import TextBlob
 import pymongo
+import re
 
 from recommendation_system import collaborative_filtering_recommendation, content_based_filtering_recommendation
 from neo4j_utils import get_hashtags_tweets_dict
@@ -54,18 +55,14 @@ def new_tweet():
     # Parse the new tweet data from the request
     tweet_text = request.form.get('text')
     username = request.form.get('username')
-    hashtags = request.form.get('hashtags')
-    mentions = request.form.get('mentions')
 
     # Check if the 'text' parameter is null or missing
     if tweet_text is None:
         return jsonify({'error': 'Text parameter is missing or null'}), 400
 
-    # Convert hashtags and mentions to lists
-    if hashtags:
-        hashtags = hashtags.split(',')
-    if mentions:
-        mentions = mentions.split(',')
+    # Extract hashtags and mentions from the tweet text
+    hashtags = re.findall(r'#(\w+)', tweet_text)
+    mentions = re.findall(r'@(\w+)', tweet_text)
 
     # Insert the new tweet data into the graph database
     with driver.session() as session:
@@ -81,7 +78,6 @@ def new_tweet():
 
     # Your remaining code...
 
-
     # Stream the new tweet data to the Kafka producer
     message = {
         "text": tweet_text,
@@ -91,12 +87,12 @@ def new_tweet():
     }
     value_bytes = json.dumps(message, ensure_ascii=False).encode('utf-8')
     producer.send('twitter-text', value=value_bytes)
-    if hashtags is not None:
-        for hashtag in hashtags:
-            producer.send('twitter-hashtags', value=hashtag.encode('utf-8'))
-    if mentions is not None:
-        for mention in mentions:
-            producer.send('twitter-usernames', value=mention.encode('utf-8'))
+
+    for hashtag in hashtags:
+        producer.send('twitter-hashtags', value=hashtag.encode('utf-8'))
+
+    for mention in mentions:
+        producer.send('twitter-usernames', value=mention.encode('utf-8'))
 
     # Perform sentiment analysis on the new tweet data
     blob = TextBlob(tweet_text)
@@ -111,7 +107,7 @@ def new_tweet():
         """, text=tweet_text, sentiment=sentiment)
 
     # Get the recommended hashtags and users based on the new tweet data
-    hashtags_tweets_dict = get_hashtags_tweets_dict()    
+    hashtags_tweets_dict = get_hashtags_tweets_dict()
     similar_tweets = content_based_filtering_recommendation(hashtags[0], hashtags_tweets_dict)
     recommended_users = collaborative_filtering_recommendation(username)
 
@@ -122,5 +118,6 @@ def new_tweet():
         "sentiment": sentiment
     }
     return jsonify(response)
+
 # if __name__ == '__main__':
 #     app.run(debug=True, port=5001)
