@@ -20,18 +20,22 @@
   </div>
 
   <div class="card">
-    <h1>Tweet Sentiment Analysis and Recommendation System</h1>
+    <h1>Tweet Sentiment Analysis and Recommendation</h1>
     <form id="tweetForm">
       <label for="tweetText">Enter Tweet:</label><br />
       <textarea id="tweetText" name="text" rows="4" cols="50"></textarea><br />
       <!-- Updated name attribute to "text" -->
       <label for="username">Username:</label><br />
       <input type="text" id="username" name="username" /><br />
-      <label for="hashtags">Hashtags (comma-separated):</label><br />
-      <input type="text" id="hashtags" name="hashtags" /><br />
-      <label for="mentions">Mentions (comma-separated):</label><br />
-      <input type="text" id="mentions" name="mentions" /><br /><br />
-      <button type="button" onclick="submitTweet()">Submit</button>
+      <!-- Removed input fields for hashtags and mentions -->
+      <br />
+      <button type="button" class="twitter" onclick="parseAndSubmitTweet()">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        Submit
+      </button>
     </form>
 
     <div id="results">
@@ -39,9 +43,22 @@
     </div>
 
     <script>
+      function parseAndSubmitTweet() {
+        var tweetInput = document.getElementById("tweetText").value;
+        var hashtags = tweetInput.match(/#[^\s#]+/g);
+        var mentions = tweetInput.match(/@[^\s@]+/g);
+
+        var formData = new FormData();
+        formData.append("text", tweetInput);
+        formData.append("username", document.getElementById("username").value);
+        formData.append("hashtags", hashtags ? hashtags.join(",") : "");
+        formData.append("mentions", mentions ? mentions.join(",") : "");
+
+        submitTweet(formData);
+      }
       function submitTweet() {
         var formData = new FormData(document.getElementById("tweetForm"));
-        fetch("/new_tweet", {
+        fetch("/dashboard/new_tweet", {
           method: "POST",
           body: formData,
         })
